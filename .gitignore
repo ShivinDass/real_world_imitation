@@ -1,0 +1,8 @@
+.idea
+*.swp
+__pycache__
+*.egg-info
+experiments
+dataset_files
+unity-log
+unity-xml
