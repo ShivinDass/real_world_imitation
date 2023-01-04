@@ -65,7 +65,7 @@ class BCEnsembleGripperMdl(BaseModel):
         if self._hp.gaussian_actions:
             losses.nll = NLL()(model_output.pred_act, torch.tile(inputs.actions[:, 0, :-1], (self._hp.n_ensemble_policies, 1)))
         else:
-            losses.mse = L2Loss()(model_output.pred_act.float(), inputs.actions[:, 0, :-1].float())
+            losses.mse = L2Loss()(model_output.pred_act, torch.tile(inputs.actions[:, 0, :-1], (self._hp.n_ensemble_policies, 1)))
 
         # cross entropy loss for gripper action classification
         if self._hp.n_classes>0:
@@ -93,15 +93,12 @@ class BCEnsembleGripperMdl(BaseModel):
         avg_entropy = torch.tensor(0)
         if self._hp.gaussian_actions:
             avg_entropy = torch.stack([p.entropy() for p in ensemble_outputs]).sum(-1).mean() #remove sum(-1) when using entropy function from multivariate gaussian
-        # avg_entropy = torch.stack([p.entropy() for p in ensemble_outputs]).mean(dim=0) #also changed the entropy funtion in variational_inference
-
+        
         # compute average pairwise KL
         avg_divergence = torch.tensor(0)
         if self._hp.gaussian_actions:
             avg_divergence = torch.stack([p.kl_divergence(q).mean()
                                       for p, q in itertools.permutations(ensemble_outputs, r=2)]).mean() if self._hp.n_ensemble_policies > 1 else torch.Tensor([0])
-        # avg_divergence = torch.stack([p.kl_divergence(q)
-        #                               for p, q in itertools.permutations(ensemble_outputs, r=2)]).mean(dim=0) if self._hp.n_ensemble_policies > 1 else torch.Tensor([0])
 
         '''
         add gripper divergence and entropy here
@@ -112,14 +109,8 @@ class BCEnsembleGripperMdl(BaseModel):
             kl = p*torch.log(p/q)
             return kl.sum()
         
-        #print(discrete_outputs)
         act = torch.argmax(discrete_outputs[0]).data.cpu().numpy() if self._hp.n_classes>0 else None
-        # ent_gripper = torch.stack([-p*torch.log(p) for p in discrete_outputs]).mean()
-        # kl_gripper = torch.stack([kl_discrete(p,q)
-        #                               for p, q in itertools.permutations(discrete_outputs, r=2)]).mean() if self._hp.n_ensemble_policies > 1 else torch.Tensor([0])
-
-        #ensemble_outputs[0].sample().data.cpu().numpy(),
-        #ensemble_outputs[0].mu.data.cpu().numpy()
+        
         return ensemble_outputs[0].mu.data.cpu().numpy() if self._hp.gaussian_actions else ensemble_outputs[0].data.cpu().numpy(), \
                act, \
                avg_divergence.data.cpu().numpy(), \

@@ -60,7 +60,7 @@ class BCRecurrentMdl(BaseModel):
         output = AttrDict()
 
         # generate recurrent actions
-        actions = torch.cat([policy(inputs.states) for policy in self.ensemble], dim=0)
+        actions = torch.cat([policy(inputs.states, goals=None) for policy in self.ensemble], dim=0)
 
         output.pred_act = MultivariateGaussian(actions[:, :2*self._hp.action_dim]) if self._hp.gaussian_actions == True else actions[:, :self._hp.action_dim]
         if self._hp.n_classes > 0:
@@ -115,9 +115,9 @@ class BCRecurrentMdl(BaseModel):
                     discrete_output= []
                     for i, policy in enumerate(self.ensemble):
                         if self._hp.autoreg:
-                            actions, self.h0[i], self.c0[i] = policy.compute_action(self.local_state[None].clone(), self.h0[i], self.c0[i])
+                            actions, self.h0[i], self.c0[i] = policy.compute_action(self.local_state[None].clone(), None, self.h0[i], self.c0[i])
                         else:
-                            actions, self.h0[i], self.c0[i] = policy.compute_action(state[None], self.h0[i], self.c0[i])
+                            actions, self.h0[i], self.c0[i] = policy.compute_action(state[None], None, self.h0[i], self.c0[i])
 
                         ensemble_outputs.append(MultivariateGaussian(actions[0, :2*self._hp.action_dim]) if self._hp.gaussian_actions else actions[0, :self._hp.action_dim])
                         if self._hp.n_classes > 0:

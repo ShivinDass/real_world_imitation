@@ -36,7 +36,7 @@ class RecurrentPolicy(nn.Module):
 
             st = self.embed_net_state(states.view(-1, self._hp.state_dim))
             gl = self.embed_net_goal(goal_states.view(-1, self._hp.goal_dim))
-            embed = torch.cat((st, gl), dim=-1).view(-1, self._hp.state_dim + self._hp.goal_dim)
+            embed = torch.cat((st, gl), dim=-1)
         else:
             embed = states.view(-1, self._hp.state_dim)
 

@@ -1,5 +1,5 @@
 # core
-numpy
+numpy==1.23.0
 matplotlib
 pillow
 h5py==2.10.0
@@ -14,8 +14,9 @@ tensorboardX==2.0
 gym==0.15.4
 pandas
 scikit-learn
+protobuf==3.20.*
 
 # RL
 wandb
-mpi4py
+#mpi4py
 #mujoco_py==2.0.2.9
