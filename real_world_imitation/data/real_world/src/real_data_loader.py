@@ -130,7 +130,7 @@ class RealSequenceSplitDataset(Dataset):
         dataset_file.close()
 
         data_dict['observations'] = data_dict['front_cam_emb'].copy()
-        for obs_key in ['mount_cam_emb', 'ee_cartesian_pos_ob', 'ee_cartesian_vel_ob']:
+        for obs_key in ['mount_cam_emb', 'prompt_embeddings', 'ee_cartesian_pos_ob', 'ee_cartesian_vel_ob']:
             data_dict['observations'] = np.concatenate((data_dict['observations'], data_dict[obs_key]), axis=1)
         
         data_dict['observations'] = np.concatenate((data_dict['observations'], data_dict['joint_pos_ob'][:, -2:]), axis=1)
