@@ -8,7 +8,7 @@ from real_world_imitation.components.data_loader import Dataset
 from real_world_imitation.utils.general_utils import AttrDict
 
 
-class RealSequenceSplitDataset(Dataset):
+class GoalAttrRealSequenceSplitDataset(Dataset):
     SPLIT = AttrDict(train=0.9, val=0.1, test=0.0)
 
     def __init__(self, data_dir, data_conf, phase, resolution=None, shuffle=True, dataset_size=-1):
@@ -29,12 +29,13 @@ class RealSequenceSplitDataset(Dataset):
             self.input_mean = self.dataset['observations'][:, -15:].mean(axis=0)
             self.input_stddev = self.dataset['observations'][:, -15:].std(axis=0)
             self.dataset['observations'][:, -15:] = (self.dataset['observations'][:, -15:] - self.input_mean)/self.input_stddev
+            self.dataset['goal_observations'][:, -15:] = (self.dataset['goal_observations'][:, -15:] - self.input_mean)/self.input_stddev
 
             self.output_mean = self.dataset['actions'][:,:3].mean(axis=0)
             self.output_stddev = self.dataset['actions'][:,:3].std(axis=0)
             self.dataset['actions'][:,:3] = (self.dataset['actions'][:,:3] - self.output_mean)/self.output_stddev
 
-            #save mean and stddev to use during inference
+            # save mean and stddev to use during inference
             norm_file_path = os.path.join(os.path.dirname(self.data_dir), os.path.splitext(os.path.basename(self.data_dir))[0] + "_norm_constants.pkl")
             
             print("==> Normalizing input/output and saving mean and stddev to {}".format(norm_file_path))    
@@ -54,6 +55,7 @@ class RealSequenceSplitDataset(Dataset):
             if end_idx+1 - start < self.subseq_len: continue    # skip too short demos
             self.seqs.append(AttrDict(
                 states=np.asarray(self.dataset['observations'][start:end_idx+1], dtype=np.float32),
+                goals=np.asarray(self.dataset['goal_observations'][start:end_idx+1], dtype=np.float32),
                 actions=np.asarray(self.dataset['actions'][start:end_idx+1], dtype=np.float32),
                 rewards=np.asarray(self.dataset['reward'][start:end_idx+1], dtype=np.float32) if 'reward' in self.dataset.keys() else np.zeros((end_idx+1 - start,), dtype=np.float32),
                 done=np.zeros((end_idx + 1 - start,), dtype=np.float32),
@@ -97,6 +99,7 @@ class RealSequenceSplitDataset(Dataset):
         start_idx = np.random.randint(0, seq.states.shape[0] - self.subseq_len + 1)
         output = AttrDict(
             states=seq.states[start_idx:start_idx+self.subseq_len],
+            goals=seq.goals[start_idx:start_idx+self.subseq_len],
             actions=seq.actions[start_idx:start_idx+self.subseq_len],
             pad_mask=np.ones((self.subseq_len,)),
             rewards=seq.rewards[start_idx:start_idx+self.subseq_len],
@@ -104,17 +107,7 @@ class RealSequenceSplitDataset(Dataset):
         )
 
         # can make it faster by vectorizing the for loop
-        if self.spec.use_goals:
-            if isinstance(self.spec.goal_len, int):
-                goals = np.stack([seq.states[min(seq.states.shape[0]-1, start_idx + self.spec.goal_len + i)] for i in range(self.subseq_len)])
-            elif isinstance(self.spec.goal_len, (tuple, list)) and len(self.spec.goal_len) == 2:
-                goals = np.stack([seq.states[min(seq.states.shape[0]-1, start_idx + np.random.random_integers(*self.spec.goal_len) + i)] for i in range(self.subseq_len)])
-            else:
-                raise "ValueError: goal_len incorrectly initialized"
-            output.goals = goals
 
-        if self.remove_goal:
-            output.states = output.states[..., :int(output.states.shape[-1]/2)]
         return output
 
     def _sample_seq(self):
@@ -136,13 +129,16 @@ class RealSequenceSplitDataset(Dataset):
         dataset_file.close()
 
         data_dict['observations'] = data_dict['front_cam_emb'].copy()
+        data_dict['goal_observations'] = data_dict['goal_front_cam_emb'].copy()
         # for obs_key in ['mount_cam_emb', 'prompt_embeddings', 'ee_cartesian_pos_ob', 'ee_cartesian_vel_ob']:
         for obs_key in ['mount_cam_emb', 'ee_cartesian_pos_ob', 'ee_cartesian_vel_ob']:
             data_dict['observations'] = np.concatenate((data_dict['observations'], data_dict[obs_key]), axis=1)
+            data_dict['goal_observations'] = np.concatenate((data_dict['goal_observations'], data_dict[f"goal_{obs_key}"]), axis=1)
         
         data_dict['observations'] = np.concatenate((data_dict['observations'], data_dict['joint_pos_ob'][:, -2:]), axis=1)
-        
-        for key in ['observations', 'actions', 'terminals']:
+        data_dict['goal_observations'] = np.concatenate((data_dict['goal_observations'], data_dict['goal_joint_pos_ob'][:, -2:]), axis=1)
+
+        for key in ['observations', 'actions', 'terminals', 'goal_observations']:
             assert key in data_dict, "Dataset is missing key %s" % key
             
         return data_dict

@@ -95,5 +95,5 @@ def add_gripper_labels(f):
     return labelled_data
 
 if __name__=='__main__':
-    process_data(file_path='boosting/boosted_datasets/jaco_nonzero/data/', file_prefix='boosting_boosted')
+    process_data(file_path='pick_apple/', file_prefix='pick_apple_seed')
     
