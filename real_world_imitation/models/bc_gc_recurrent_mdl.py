@@ -176,3 +176,10 @@ class BCGoalConditionedRecurrentMdl(BaseModel):
         self.goal_generator = model_class(config)
         CheckpointHandler.load_weights(CheckpointHandler.get_resume_ckpt_file(epoch, ckpt_path), self.goal_generator)
         freeze_module(self.goal_generator)
+    
+    def get_lstm_hidden_units(self, states, goals):
+        with no_batchnorm_update(nn.ModuleList([self.ensemble])):
+            with no_dropout_update(nn.ModuleList([self.ensemble])):
+                with torch.no_grad():
+                    _, h, c = self.ensemble[0].compute_action(states, goals)
+        return h

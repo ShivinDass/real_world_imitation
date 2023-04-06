@@ -3,7 +3,7 @@ from real_world_imitation.models.bc_gc_recurrent_mdl import BCGoalConditionedRec
 from real_world_imitation.components.logger import Logger
 from real_world_imitation.utils.general_utils import AttrDict
 from real_world_imitation.configs.default_data_configs.real_world import data_spec
-from real_world_imitation.components.evaluator import DummyEvaluator
+#from real_world_imitation.components.evaluator import DummyEvaluator
 
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
