@@ -2,7 +2,7 @@ import os
 from real_world_imitation.models.bc_gc_recurrent_mdl import BCGoalConditionedRecurrentMdl
 from real_world_imitation.components.logger import Logger
 from real_world_imitation.utils.general_utils import AttrDict
-from real_world_imitation.configs.default_data_configs.real_world import data_spec
+from real_world_imitation.configs.default_data_configs.real_world_img_goal import data_spec
 from real_world_imitation.components.evaluator import DummyEvaluator
 
 
@@ -12,10 +12,10 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 configuration = {
     'model': BCGoalConditionedRecurrentMdl,
     'logger': Logger,
-    'data_dir': os.path.join(os.environ['DATA_DIR'], 'pick_apple_r3m_embedded50_clean_gripper/embedded50_clean_gripper.hdf5'),
+    'data_dir': os.path.join(os.environ['DATA_DIR'], 'seed3/boosted_data/R3M/combined.h5'),
     'batch_size': 16,
     'epoch_cycles_train': 20,
-    'num_epochs': 41,
+    'num_epochs': 51,
     'evaluator': DummyEvaluator,
     'lr_decay': 1,
 }
@@ -28,10 +28,12 @@ model_config = AttrDict(
     n_ensemble_policies=1,
     n_processing_layers=3,
     n_classes=3,
-    gripper_weights=[0.75, 0.05, 0.2],
+    gripper_weights=[0.75, 0.05, 0.20],
     # for oracle boosted: [0.75, 0.05, 0.2]
     # for all play data: [0.53, 0.08, 0.39]
-    # for r3m boosted: [0.73, 0.09, 0.18]
+    # for r3m boosted: [0.8, 0.06, 0.14]
+    # for iql boosted: [0.74, 0.05, 0.21]
+    # for act boosted: [0, 0.27, 0.73]
     embed_mid_size=256,
     output_mid_size=256,
     lstm_hidden_size=256,

@@ -9,7 +9,7 @@ from real_world_imitation.utils.general_utils import AttrDict
 
 
 class RealSequenceSplitDataset(Dataset):
-    SPLIT = AttrDict(train=0.9, val=0.1, test=0.0)
+    SPLIT = AttrDict(train=1, val=0.0, test=0.0)
 
     def __init__(self, data_dir, data_conf, phase, resolution=None, shuffle=True, dataset_size=-1):
         self.phase = phase
@@ -40,11 +40,12 @@ class RealSequenceSplitDataset(Dataset):
             print("==> Normalizing input/output and saving mean and stddev to {}".format(norm_file_path))    
             with open(norm_file_path, 'wb') as f:
                 pickle.dump(AttrDict(
-                    observations_mean=self.input_mean,
-                    observations_stddev=self.input_stddev,
+                    # observations_mean=self.input_mean,
+                    # observations_stddev=self.input_stddev,
                     actions_mean=self.output_mean,
                     actions_stddev=self.output_stddev
                 ), f)
+                print("Normalizing factors:", self.output_mean, self.output_stddev)
 
         # split dataset into sequences
         self.seq_end_idxs = np.where(self.dataset['terminals'])[0]
@@ -136,11 +137,12 @@ class RealSequenceSplitDataset(Dataset):
         dataset_file.close()
 
         data_dict['observations'] = data_dict['front_cam_emb'].copy()
+        data_dict['observations'] = np.concatenate((data_dict['observations'], data_dict['prompt_embeddings']), axis=1)
         # for obs_key in ['mount_cam_emb', 'prompt_embeddings', 'ee_cartesian_pos_ob', 'ee_cartesian_vel_ob']:
-        for obs_key in ['mount_cam_emb', 'ee_cartesian_pos_ob', 'ee_cartesian_vel_ob']:
-            data_dict['observations'] = np.concatenate((data_dict['observations'], data_dict[obs_key]), axis=1)
+        # for obs_key in ['mount_cam_emb', 'ee_cartesian_pos_ob', 'ee_cartesian_vel_ob']:
+        #     data_dict['observations'] = np.concatenate((data_dict['observations'], data_dict[obs_key]), axis=1)
         
-        data_dict['observations'] = np.concatenate((data_dict['observations'], data_dict['joint_pos_ob'][:, -2:]), axis=1)
+        # data_dict['observations'] = np.concatenate((data_dict['observations'], data_dict['joint_pos_ob'][:, -2:]), axis=1)
         
         for key in ['observations', 'actions', 'terminals']:
             assert key in data_dict, "Dataset is missing key %s" % key

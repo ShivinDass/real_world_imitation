@@ -6,41 +6,52 @@ import torch
 from sentence_transformers import SentenceTransformer
 import ast
 
-# transform = T.Compose(
-#    [
-#        T.Resize((224, 224)),  # 256 instead of 224 for vit-l
-#        T.Normalize(
-#            mean=[0.485, 0.456, 0.406],
-#            std=[0.229, 0.224, 0.225],
-#        ),
-#    ]
-# )
-BATCH_SIZE = 1024
+BATCH_SIZE = 512
 
-def process_data(file_path, file_prefix):
-    data_path = os.path.join(os.environ["DATA_DIR"], file_path)
-    data = encode_trajectories(data_path)
+total_len = 0
+total_zero_act = 0
+
+class R3M_encoder:
+    
+    def __init__(self):
+        from r3m import load_r3m
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = load_r3m("resnet50").eval().to(device)
+
+    def preprocess(self, data):
+        return data
+
+    def __call__(self, batch):
+        return self.model(batch)
+
+def process_data(file_paths, file_prefix):
+    file_paths = read_data(file_paths)
+    data = mvp_encode(file_paths)
     data = remove_stationary_actions(data)
     data = remove_skipped_prompts_and_process_prompts(data)
     data = add_gripper_labels(data)
     encode_prompts(data)
     data = split_into_primitive_trajectories(data)
-    data = filter_based_on_prompt(data, prompt="Pick up the apple fruit.")
+    # data = filter_based_on_prompt(data, prompt="Pick up the butter dairy.")
 
     save_path = os.path.join(
-        os.environ["DATA_DIR"], "{}_embedded50_clean_gripper".format(file_prefix)
+        os.environ["DATA_DIR"], "{}_mvp_clean_gripper".format(file_prefix)
     )
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     with h5py.File(
-        os.path.join(save_path, "embedded50_clean_gripper.hdf5"), "w"
+        os.path.join(save_path, "mvp_clean_gripper.hdf5"), "w"
     ) as g:
         for k in data.keys():
             data[k] = np.array(data[k])
             print(k, data[k].shape)
             if k == 'prompts':
-                continue
-            g.create_dataset(k, data=np.array(data[k]))
+                g.create_dataset(k, data=np.array(data[k], dtype='S'))
+            else:
+                g.create_dataset(k, data=np.array(data[k]))
+    
+    print("Total Len check:", total_len-total_zero_act)
 
 
 def batch_process(model, tensor, device):
@@ -52,22 +63,119 @@ def batch_process(model, tensor, device):
     assert outs.shape[0] == tensor.shape[0]
     return outs
 
+def read_data(file_paths):
+    file_paths = [file_paths] if not type(file_paths)==list else file_paths
+    files = []
+    for path in file_paths:
+        demo_list = sorted(os.listdir(path))
+        for g in demo_list:
+            g = os.path.join(path, g)
+            if os.path.isdir(g):
+                continue
+            files.append(g)
+    return files
 
-def encode_trajectories(data_dir):
+def mvp_encode(file_paths):
+    global total_len
+    import mvp
+    import ssl
+    ssl._create_default_https_context = ssl._create_unverified_context
+    import torchvision.transforms as T
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    mvp = mvp.load('vitl-256-mae-egosoup').eval().to(device)
+    mvp.freeze()
+    transform = T.Compose(
+        [
+            T.Resize((256, 256)), # 256 instead of 224 for vit-l
+            # T.ToTensor(),
+            T.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225],
+            ),
+        ]
+    )
+
+    data_dict = {"prompts": []}
+    for g in file_paths:
+        print("==> Reading {}".format(g))
+
+        with h5py.File(g, "r") as f:
+            total_len += np.array(f['actions']).shape[0]
+            front_tensor = transform(torch.tensor(
+                np.array(f["front_cam_ob"]), dtype=torch.float32
+            ).movedim(3, 1))
+            mount_tensor = transform(torch.tensor(
+                np.array(f["mount_cam_ob"]), dtype=torch.float32
+            ).movedim(3, 1))
+
+            with torch.cuda.amp.autocast(enabled=True):
+                with torch.no_grad():
+                    f_embedding = batch_process(mvp, front_tensor, device)
+                    m_embedding = batch_process(mvp, mount_tensor, device)
+
+            data_dict["front_cam_emb"] = (
+                np.concatenate(
+                    (data_dict["front_cam_emb"], f_embedding.data.cpu().numpy().copy()),
+                    axis=0,
+                )
+                if "front_cam_emb" in data_dict.keys()
+                else f_embedding.data.cpu().numpy().copy()
+            )
+            data_dict["mount_cam_emb"] = (
+                np.concatenate(
+                    (data_dict["mount_cam_emb"], m_embedding.data.cpu().numpy().copy()),
+                    axis=0,
+                )
+                if "mount_cam_emb" in data_dict.keys()
+                else m_embedding.data.cpu().numpy().copy()
+            )
+
+            for k in f.keys():
+                if k in [
+                    "actions",
+                    "ee_cartesian_pos_ob",
+                    "ee_cartesian_vel_ob",
+                    "joint_pos_ob",
+                    "joint_vel_ob",
+                    "terminals",
+                ]:
+                    data_dict[k] = (
+                        np.concatenate((data_dict[k], np.array(f[k]).copy()), axis=0)
+                        if k in data_dict.keys()
+                        else np.array(f[k]).copy()
+                    )
+                elif k == "prompts":
+                    data_dict[k].extend([prompt for prompt in f[k]])
+
+            data_dict["terminals"][-1] = 1
+            if "reward" in f.keys():
+                a = np.array(f["reward"]).copy()
+                data_dict["reward"] = (
+                    np.concatenate((data_dict["reward"], a), axis=0)
+                    if "reward" in data_dict.keys()
+                    else a
+                )
+            else:
+                a = np.zeros(len(np.array(f["actions"])))
+                a[-2] = 1
+                data_dict["reward"] = (
+                    np.concatenate((data_dict["reward"], a), axis=0)
+                    if "reward" in data_dict.keys()
+                    else a
+                )
+
+    return data_dict
+
+
+def r3m_encode(file_paths):
 
     from r3m import load_r3m
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     r3m = load_r3m("resnet50").eval().to(device)
-    # mvp = mvp.load("vitb-mae-egosoup").to(device)
-    # mvp.freeze()
 
     data_dict = {"prompts": []}
-    demo_list = sorted(os.listdir(data_dir))
-    for g in demo_list:
-        g = os.path.join(data_dir, g)
-        if os.path.isdir(g):
-            continue
+    for g in file_paths:
         print("==> Reading {}".format(g))
 
         with h5py.File(g, "r") as f:
@@ -137,12 +245,14 @@ def encode_trajectories(data_dir):
 
 
 def remove_stationary_actions(f):
+    global total_zero_act
+
     clean_data = {k: [] for k in f}
     for i, a in enumerate(f["actions"]):
         if f["terminals"][i] == False and np.linalg.norm(f["actions"][i]) == 0:
+            total_zero_act += 1
             continue
         for k in f:
-            # print(k, print(f[k].shape))
             clean_data[k].append(f[k][i])
 
     clean_data = {k: np.array(clean_data[k]) for k in clean_data.keys()}
@@ -259,7 +369,7 @@ def add_gripper_labels(f):
 def filter_based_on_prompt(f, prompt):
     filtered_data = {k: [] for k in f.keys()}
     for i, a in enumerate(f["actions"]):
-        if f['prompts'][i] == 'Pick up the apple fruit.':
+        if f['prompts'][i] == prompt:
             print(f['prompts'][i])
             for k in f.keys():
                 filtered_data[k].append(f[k][i])
@@ -281,6 +391,10 @@ def encode_prompts(f):
     f["prompt_embeddings"] = np.stack(language_embeddings)
 
 if __name__ == "__main__":
+    file_paths = [
+        "/home/sdass/assisted_teleop_real/wecook-docker/code/data/play_data/",
+        "/home/sdass/assisted_teleop_real/wecook-docker/code/data/play_data_2/",
+    ]
     process_data(
-        file_path="play_data", file_prefix="play_data_pick_apple_only",
+        file_paths=file_paths, file_prefix="all_play_data_diverse_mvp",
     )

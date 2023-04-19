@@ -9,7 +9,7 @@ from real_world_imitation.utils.general_utils import AttrDict
 
 
 class GoalAttrRealSequenceSplitDataset(Dataset):
-    SPLIT = AttrDict(train=0.9, val=0.1, test=0.0)
+    SPLIT = AttrDict(train=1.0, val=0.0, test=0.0)
 
     def __init__(self, data_dir, data_conf, phase, resolution=None, shuffle=True, dataset_size=-1):
         self.phase = phase
