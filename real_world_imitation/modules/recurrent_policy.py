@@ -51,13 +51,10 @@ class RecurrentPolicy(nn.Module):
         return actions
 
     def compute_action(self, state, goal, h0=None, c0=None):
-        
         if self._hp.goal_conditioned:
-            embed = self.embed_net(torch.cat((self.embed_net_state(state), self.embed_net_goal(goal)), dim=-1)).view(1,1,-1)
+            embed = self.embed_net(torch.cat((self.embed_net_state(state), self.embed_net_goal(goal)), dim=-1)).view(-1, 1, self._hp.lstm_hidden_size)
         else:
-            embed = self.embed_net(state).view(1,1,-1)
-        
+            embed = self.embed_net(state).view(-1, 1, self._hp.state_dim)
         lstm_out, (h0, c0) = self.lstm(embed, (h0, c0)) if h0 is not None else self.lstm(embed)
-        action = self.output_net(lstm_out.reshape(1,-1))
-
+        action = self.output_net(lstm_out.reshape(-1, self._hp.lstm_hidden_size))
         return action, h0, c0
